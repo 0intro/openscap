@@ -8,6 +8,11 @@
 # define MEMUSAGE_LINUX_PROC_ENV    "MEMUSAGE_PROC_STATUS"
 # define MEMUSAGE_LINUX_SYS_STATUS "/proc/meminfo"
 # define MEMUSAGE_LINUX_SYS_ENV "MEMUSAGE_SYS_STATUS"
+# define MEMUSAGE_LINUX_SYS_CGROUP_USAGE "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+# define MEMUSAGE_LINUX_SYS_CGROUP_LIMIT "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+# define MEMUSAGE_LINUX_SYS_CGROUP2_CURRENT "/sys/fs/cgroup/memory.current"
+# define MEMUSAGE_LINUX_SYS_CGROUP2_MAX "/sys/fs/cgroup/memory.max"
+
 #endif /* OS_LINUX */
 
 struct proc_memusage {
@@ -32,8 +37,9 @@ struct sys_memusage {
 
 /*
  * oscap_proc_memusage and oscap_sys_memusage measure the memory of this
- * process and of the system. On Linux they read /proc in the root directory
- * open as rootfd, or in the current root if rootfd is -1.
+ * process and of the system. On Linux they read /proc and the cgroup memory
+ * files in the root directory open as rootfd, or in the current root if
+ * rootfd is -1.
  */
 int oscap_proc_memusage(int rootfd, struct proc_memusage *mu);
 int oscap_sys_memusage(int rootfd, struct sys_memusage *mu);

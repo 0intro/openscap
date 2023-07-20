@@ -50,14 +50,13 @@
 #define GET_VM_FREE_PAGE_COUNT  "vm.stats.vm.v_free_count"
 #define GET_VM_INACT_PAGE_COUNT "vm.stats.vm.v_inactive_count"
 #define GET_VM_ACT_PAGE_COUNT   "vm.stats.vm.v_active_count"
-
-#define BYTES_TO_KIB(x) (x >> 10)
 #endif /* OS_FREEBSD */
+
+#define BYTES_TO_KIB(x) ((x) >> 10)
 
 #if defined(OS_APPLE)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
-#define BYTES_TO_KIB(x) ((x) >> 10)
 #endif /* OS_APPLE */
 
 #include "debug_priv.h"
@@ -201,6 +200,26 @@ static int read_status(int rootfd, const char *source, void *base, struct stat_p
 	return processed == spt_size ? 0 : 1;
 }
 
+static size_t get_sys_value(int rootfd, const char *source)
+{
+	FILE *f;
+	size_t v;
+
+	f = open_status(rootfd, source);
+	if (f == NULL) {
+		return (size_t)-1;
+	}
+
+	if (fscanf(f, "%zu", &v) != 1) {
+		fclose(f);
+		return (size_t)-1;
+	}
+
+	fclose(f);
+
+	return v;
+}
+
 #define stat_sizet_field(name, stype, sfield)                           \
 	{ (name), &read_common_sizet, (ptrdiff_t)offsetof(stype, sfield) }
 
@@ -336,6 +355,27 @@ int oscap_sys_memusage(int rootfd, struct sys_memusage *mu)
 	}
 
 	mu->mu_realfree = mu->mu_free + mu->mu_cached + mu->mu_buffers;
+
+	/*
+	 * A cgroup memory limit below the physical memory bounds the memory
+	 * of the process. cgroup v1 reports a group without a limit as a
+	 * number larger than any memory, and cgroup v2 as "max", which does
+	 * not parse.
+	 */
+	size_t usage = get_sys_value(rootfd, MEMUSAGE_LINUX_SYS_CGROUP_USAGE);
+	size_t limit = get_sys_value(rootfd, MEMUSAGE_LINUX_SYS_CGROUP_LIMIT);
+	if (usage == (size_t)-1 || limit == (size_t)-1) {
+		usage = get_sys_value(rootfd, MEMUSAGE_LINUX_SYS_CGROUP2_CURRENT);
+		limit = get_sys_value(rootfd, MEMUSAGE_LINUX_SYS_CGROUP2_MAX);
+	}
+	if (usage != (size_t)-1 && limit != (size_t)-1 && BYTES_TO_KIB(limit) < mu->mu_total) {
+		size_t room = usage < limit ? BYTES_TO_KIB(limit - usage) : 0;
+
+		mu->mu_total = BYTES_TO_KIB(limit);
+		if (room < mu->mu_realfree)
+			mu->mu_realfree = room;
+	}
+
 #elif defined(OS_FREEBSD)
 	if (freebsd_sys_memusage(mu))
 		return -1;
