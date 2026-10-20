@@ -552,6 +552,18 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 			close(stdout_pipefd[1]);
 			close(stderr_pipefd[1]);
 
+			// give the script /dev/null as standard input, so that a command
+			// reading it gets end of file at once, while the input of oscap,
+			// such as the rule list oscap-io reads, stays with oscap
+			int null_fd = open("/dev/null", O_RDONLY);
+			if (null_fd != -1) {
+				dup2(null_fd, fileno(stdin));
+				if (null_fd != fileno(stdin))
+					close(null_fd);
+			} else {
+				close(fileno(stdin));
+			}
+
 			// before we execute the script, lets make sure we get SIGTERM when
 			// oscap is killed, crashes or otherwise terminates
 #if defined(PR_SET_PDEATHSIG)
