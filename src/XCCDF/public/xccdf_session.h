@@ -534,6 +534,17 @@ OSCAP_API int xccdf_session_export_check_engine_plugins(struct xccdf_session *se
 OSCAP_API int xccdf_session_export_arf(struct xccdf_session *session);
 
 /**
+ * Print the system characteristics of the last evaluation on standard
+ * output: one oval_system_characteristics document per OVAL file of the
+ * session, in the order the session loaded them. A session without OVAL
+ * prints nothing.
+ * @memberof xccdf_session
+ * @param session XCCDF Session
+ * @returns zero on success, nonzero on failure (oscap_seterr is set)
+ */
+OSCAP_API int xccdf_session_print_syschar(struct xccdf_session *session);
+
+/**
  * Get policy_model of the session. The @ref xccdf_session_load_xccdf shall be run
  * before this to parse XCCDF file to the policy_model.
  * @memberof xccdf_session
