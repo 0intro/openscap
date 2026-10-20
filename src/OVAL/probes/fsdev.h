@@ -48,10 +48,11 @@ typedef struct {
 } fsdev_t;
 
 /**
- * Initialize the fsdev_t structure from an array of filesystem
- * names.
+ * Initialize the fsdev_t structure with the devices of the local
+ * filesystems, and of the overlay filesystem that holds root, the root
+ * of the walk (NULL for /).
  */
-fsdev_t *fsdev_init(void);
+fsdev_t *fsdev_init(const char *root);
 
 /**
  * Free the fsdev_t structure.
