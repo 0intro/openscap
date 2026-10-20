@@ -1,6 +1,7 @@
 if(ENABLE_SCE)
 	add_oscap_test("test_prefer_sce.sh")
 	add_oscap_test("test_sce.sh")
+	add_oscap_test("test_sce_interpreter.sh" LABELS freebsd linux)
 	add_oscap_test("test_passing_vars.sh")
 	add_oscap_test("test_check_engine_results.sh")
 	add_oscap_test("test_sce_in_ds.sh")
