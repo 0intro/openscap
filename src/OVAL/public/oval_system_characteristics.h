@@ -219,6 +219,11 @@ OSCAP_API struct oval_syschar_model *oval_syschar_model_clone(struct oval_syscha
  */
 OSCAP_API int oval_syschar_model_export(struct oval_syschar_model *, const char *file);
 /**
+ * Print system characteristics.
+ * @memberof oval_syschar_model
+ */
+OSCAP_API int oval_syschar_model_print(struct oval_syschar_model *);
+/**
  * Free memory allocated to a specified syschar model.
  * @param model the specified syschar model
  * @memberof oval_syschar_model
