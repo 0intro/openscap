@@ -347,6 +347,7 @@ cmake_dependent_option(ENABLE_OSCAP_UTIL_VM "enables the oscap-vm utility, this 
 cmake_dependent_option(ENABLE_OSCAP_UTIL_PODMAN "enables the oscap-podman utility, this lets you scan Podman containers and container images" ON "NOT WIN32" OFF)
 cmake_dependent_option(ENABLE_OSCAP_UTIL_IM "enables the oscap-im utility, this lets you build hardened bootable container images" ON "NOT WIN32" OFF)
 cmake_dependent_option(ENABLE_OSCAP_UTIL_CHROOT "enables the oscap-chroot utility, this lets you scan entire chroots using offline scanning" ON "NOT WIN32" OFF)
+cmake_dependent_option(ENABLE_OSCAP_UTIL_IO "enables the oscap-io utility" ON "NOT WIN32" OFF)
 option(ENABLE_OSCAP_UTIL_AUTOTAILOR "enables the autotailor utility that is able to perform command-line tailoring" TRUE)
 option(ENABLE_OSCAP_REMEDIATE_SERVICE "enables the oscap-remediate service" FALSE)
 
@@ -485,6 +486,7 @@ message(STATUS "oscap-vm: ${ENABLE_OSCAP_UTIL_VM}")
 message(STATUS "oscap-podman: ${ENABLE_OSCAP_UTIL_PODMAN}")
 message(STATUS "oscap-im: ${ENABLE_OSCAP_UTIL_IM}")
 message(STATUS "oscap-chroot: ${ENABLE_OSCAP_UTIL_CHROOT}")
+message(STATUS "oscap-io: ${ENABLE_OSCAP_UTIL_IO}")
 message(STATUS "autotailor: ${ENABLE_OSCAP_UTIL_AUTOTAILOR}")
 message(STATUS " ")
 
