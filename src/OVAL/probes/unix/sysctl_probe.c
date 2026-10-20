@@ -78,7 +78,7 @@
 
 int sysctl_probe_offline_mode_supported(void)
 {
-        return PROBE_OFFLINE_OWN;
+        return PROBE_OFFLINE_NONE;
 }
 
 int sysctl_probe_main(probe_ctx *ctx, void *probe_arg)
