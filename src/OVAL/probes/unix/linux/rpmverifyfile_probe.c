@@ -350,6 +350,7 @@ void *rpmverifyfile_probe_init(void)
 {
 #ifdef RPM46_FOUND
 	rpmlogSetCallback(rpmErrorCb, NULL);
+	rpmSetVerbosity(RPMLOG_ERR);
 #endif
 	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
 		dD("rpmReadConfigFiles failed: %u, %s.", errno, strerror (errno));
