@@ -424,6 +424,137 @@ static void exec_script_interpreter(const char *script, char **env)
 	execve(interp, argv, env);
 }
 
+/*
+ * script_flag returns the option with which the interpreter of a "#!" line
+ * runs program text given as an argument, or NULL when it knows none for
+ * it. The interpreter is the basename of interp, or of arg when interp is
+ * env.
+ */
+static const char *script_flag(const char *interp, const char *arg)
+{
+	static const struct {
+		const char *name;
+		const char *flag;
+	} flags[] = {
+		{ "sh", "-c" },
+		{ "bash", "-c" },
+		{ "dash", "-c" },
+		{ "ash", "-c" },
+		{ "ksh", "-c" },
+		{ "mksh", "-c" },
+		{ "zsh", "-c" },
+		{ "perl", "-e" },
+	};
+	const char *name = strrchr(interp, '/');
+
+	name = name != NULL ? name + 1 : interp;
+	if (strcmp(name, "env") == 0) {
+		if (arg == NULL)
+			return NULL;
+		name = strrchr(arg, '/');
+		name = name != NULL ? name + 1 : arg;
+	}
+	if (strncmp(name, "python", 6) == 0 && strspn(name + 6, "0123456789.") == strlen(name + 6))
+		return "-c";
+	for (size_t i = 0; i < sizeof(flags) / sizeof(flags[0]); i++) {
+		if (strcmp(name, flags[i].name) == 0)
+			return flags[i].flag;
+	}
+	return NULL;
+}
+
+/*
+ * exec_script_in_root runs script with root as its root directory, so that
+ * the script assesses the system mounted there, as the probes do when
+ * OSCAP_PROBE_ROOT is set. It reads the script before entering root and
+ * hands its text to the interpreter of its first line, with the option that
+ * interpreter takes for program text (script_flag), since the script lives
+ * in the container's OSCAP_TEMP_DIR, outside root, and root may be
+ * read-only. The script sees its path outside root as $0, and its text must
+ * fit in one argument (128 KiB on Linux). A script for another interpreter
+ * exits with the error result.
+ *
+ * It returns without entering root when chroot is refused, as for a process
+ * without CAP_SYS_CHROOT, after a warning on warnfd, so that the caller runs
+ * the script in place, where the probes that chroot also stay. The file
+ * probes keep reading root. Any other failure exits with the error result.
+ */
+static void exec_script_in_root(const char *script, const char *root, char **env, int warnfd)
+{
+	FILE *f = fopen(script, "r");
+	if (f == NULL) {
+		printf("Cannot read script '%s': %s\n", script, strerror(errno));
+		exit(103);
+	}
+	size_t size = 0, cap = 4096;
+	char *text = malloc(cap + 1);
+	size_t n;
+	while (text != NULL && (n = fread(text + size, 1, cap - size, f)) > 0) {
+		size += n;
+		if (size == cap) {
+			char *bigger = realloc(text, 2 * cap + 1);
+			if (bigger == NULL) {
+				free(text);
+				text = NULL;
+				break;
+			}
+			text = bigger;
+			cap *= 2;
+		}
+	}
+	int bad = text == NULL || ferror(f);
+	fclose(f);
+	if (bad) {
+		printf("Cannot read script '%s'\n", script);
+		exit(103);
+	}
+	text[size] = '\0';
+
+	char line[PATH_MAX + 64];
+	snprintf(line, sizeof(line), "%.*s", (int)strcspn(text, "\n"), text);
+	char *interp = "/bin/sh";
+	char *arg = NULL;
+	parse_shebang(line, &interp, &arg);
+
+	const char *flag = script_flag(interp, arg);
+	if (flag == NULL) {
+		printf("Cannot run script '%s' in OSCAP_PROBE_ROOT '%s' with interpreter '%s'.\n", script, root, interp);
+		exit(103);
+	}
+	// "#!/bin/sh -" ends the options, which would make -c a script name
+	if (arg != NULL && strcmp(arg, "-") == 0)
+		arg = NULL;
+
+	if (chroot(root) != 0) {
+		if (errno == EPERM) {
+			dprintf(warnfd, "Cannot enter OSCAP_PROBE_ROOT '%s': %s. Running script '%s' in place.\n",
+				root, strerror(errno), script);
+			free(text);
+			return;
+		}
+		printf("Cannot enter OSCAP_PROBE_ROOT '%s' to run script '%s': %s\n", root, script, strerror(errno));
+		exit(103);
+	}
+	if (chdir("/") != 0) {
+		printf("Cannot change to / in OSCAP_PROBE_ROOT '%s': %s\n", root, strerror(errno));
+		exit(103);
+	}
+
+	char *argv[6];
+	int i = 0;
+	argv[i++] = interp;
+	if (arg != NULL)
+		argv[i++] = arg;
+	argv[i++] = (char *)flag;
+	argv[i++] = text;
+	argv[i++] = (char *)script;
+	argv[i] = NULL;
+	execve(interp, argv, env);
+	printf("Unexpected error when executing script '%s' in OSCAP_PROBE_ROOT '%s'. Error message follows.\n", script, root);
+	perror("execve");
+	exit(103);
+}
+
 xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const char *rule_id, const char *id, const char *href,
 		struct xccdf_value_binding_iterator *value_binding_it,
 		struct xccdf_check_import_iterator *check_import_it,
@@ -593,6 +724,9 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 			close(stdout_pipefd[0]);
 			close(stderr_pipefd[0]);
 
+			// keep the standard error of oscap for warnings, closed on exec
+			int oscap_stderr = fcntl(fileno(stderr), F_DUPFD_CLOEXEC, 3);
+
 			// forward stdout and stderr to our custom opened pipes
 			dup2(stdout_pipefd[1], fileno(stdout));
 			dup2(stderr_pipefd[1], fileno(stderr));
@@ -616,6 +750,10 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 #endif
 
 			// we are the child process
+			const char *probe_root = getenv("OSCAP_PROBE_ROOT");
+			if (probe_root != NULL && *probe_root != '\0' && strcmp(probe_root, "/") != 0)
+				exec_script_in_root(tmp_href, probe_root, env_values, oscap_stderr);
+
 			execve(tmp_href, argvp, env_values);
 
 			// a script without exec rights or on a noexec mount fails with
