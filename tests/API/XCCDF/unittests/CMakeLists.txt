@@ -25,6 +25,10 @@ add_oscap_test_executable(test_xccdf_result_sysinfo_platform
 	"test_xccdf_result_sysinfo_platform.c"
 )
 
+add_oscap_test_executable(test_xccdf_session_result_reset
+	"test_xccdf_session_result_reset.c"
+)
+
 if(PYTHONINTERP_FOUND)
 	add_oscap_test("all_python.sh")
 endif()
@@ -35,6 +39,7 @@ add_oscap_test("test_xccdf_shall_pass2.sh")
 add_oscap_test("test_xccdf_shall_pass3.sh")
 add_oscap_test("test_oscap_common.sh")
 add_oscap_test("test_xccdf_overrides.sh")
+add_oscap_test("test_xccdf_session_result_reset.sh")
 add_oscap_test("test_xccdf_role_unscored.sh")
 add_oscap_test("test_remediate_unresolved.sh")
 add_oscap_test("test_empty_variable.sh")
