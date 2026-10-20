@@ -39,6 +39,7 @@
 #include "oscap_helpers.h"
 
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -62,7 +63,6 @@
 #include <unistd.h>
 #include <libgen.h>
 
-#define SCE_SCRIPT "oscap-run-sce-script"
 
 struct sce_check_result
 {
@@ -365,6 +365,65 @@ static void free_env_values(char **env_values, size_t index_of_first_env_value_n
 }
 
 
+/*
+ * parse_shebang reads the interpreter and its optional argument from the
+ * first line of a script, as the kernel does: "#!", the interpreter path,
+ * and at most one argument. It edits line in place, and leaves *interp and
+ * *arg as they are when line does not start with "#!".
+ */
+static void parse_shebang(char *line, char **interp, char **arg)
+{
+	if (strncmp(line, "#!", 2) != 0)
+		return;
+	char *p = line + 2;
+	p[strcspn(p, "\r\n")] = '\0';
+	p += strspn(p, " \t");
+	*interp = p;
+	p += strcspn(p, " \t");
+	if (*p != '\0') {
+		*p++ = '\0';
+		p += strspn(p, " \t");
+		char *end = p + strlen(p);
+		while (end > p && (end[-1] == ' ' || end[-1] == '\t'))
+			*--end = '\0';
+		if (*p != '\0')
+			*arg = p;
+	}
+}
+
+/*
+ * exec_script_interpreter runs script through the interpreter named on its
+ * first line, as the kernel does for an executable script. A script without
+ * that line runs under /bin/sh, as execvp runs it. It returns only if
+ * execve fails.
+ *
+ * It serves scripts that cannot be executed directly: those without exec
+ * rights, those in an OSCAP_TEMP_DIR on a noexec mount, which the CIS
+ * benchmarks recommend for /tmp, and those without a "#!" line.
+ */
+static void exec_script_interpreter(const char *script, char **env)
+{
+	char line[PATH_MAX + 64] = "";
+	char *interp = "/bin/sh";
+	char *arg = NULL;
+	FILE *f = fopen(script, "r");
+
+	if (f != NULL) {
+		if (fgets(line, sizeof(line), f) != NULL)
+			parse_shebang(line, &interp, &arg);
+		fclose(f);
+	}
+
+	char *argv[4];
+	int i = 0;
+	argv[i++] = interp;
+	if (arg != NULL)
+		argv[i++] = arg;
+	argv[i++] = (char *)script;
+	argv[i] = NULL;
+	execve(interp, argv, env);
+}
+
 xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const char *rule_id, const char *id, const char *href,
 		struct xccdf_value_binding_iterator *value_binding_it,
 		struct xccdf_check_import_iterator *check_import_it,
@@ -373,7 +432,6 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 	dI("Executing SCE check '%s'", href);
 	struct sce_parameters* parameters = (struct sce_parameters*)usr;
 	const char* xccdf_directory = parameters->xccdf_directory;
-	bool use_sce_wrapper = false; // use osca-run-sce-script ?
 
 	char* tmp_href = oscap_sprintf("%s/%s", xccdf_directory, href);
 
@@ -391,20 +449,13 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 		return XCCDF_RESULT_NOT_CHECKED;
 	}
 
-	if (access(tmp_href, F_OK | X_OK))
-	{
-		// use the sce wrapper if it's not possible to acquire +x rights
-		use_sce_wrapper = true;
-		dI("%s isn't executable, oscap-run-sce-script will be used.", tmp_href);
-	}
-
 	// all the result codes are shifted by 100, because otherwise syntax errors in scripts
 	// or even their nonexistence would cause XCCDF_RESULT_PASS to be the result
 
 	char* argvp[3] = {
 		tmp_href,
-		tmp_href, // the second tmp_href is added in case we use the wrapper (oscap-run-sce-script)
-		NULL      // which need the path of the script to eval as first parameter.
+		tmp_href, // an executable script also gets its path as first argument
+		NULL
 	};
 
 	// bound values in KEY=VALUE form, ready to be passed as environment variables
@@ -565,22 +616,12 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 #endif
 
 			// we are the child process
-			if(use_sce_wrapper) {
-#if defined(OS_FREEBSD)
-				size_t k;
+			execve(tmp_href, argvp, env_values);
 
-				// Setup environment beforehand as FreeBSD does not have execvpe()
-				for (k = 0; k < env_value_count; k++) {
-					putenv(env_values[k]);
-				}
-
-				execvp("oscap-run-sce-script", argvp);
-#else
-				execvpe("oscap-run-sce-script", argvp, env_values);
-#endif
-			} else {
-				execve(tmp_href, argvp, env_values);
-			}
+			// a script without exec rights or on a noexec mount fails with
+			// EACCES, and one without "#!" with ENOEXEC
+			if (errno == EACCES || errno == ENOEXEC)
+				exec_script_interpreter(tmp_href, env_values);
 
 			free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 
