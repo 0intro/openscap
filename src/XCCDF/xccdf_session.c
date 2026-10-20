@@ -1853,6 +1853,36 @@ int xccdf_session_export_arf(struct xccdf_session *session)
 	return 0;
 }
 
+static struct oval_syschar_model *_xccdf_oval_session_get_syschar_model(struct oval_agent_session *oval_session)
+{
+	struct oval_results_model *rmodel = oval_agent_get_results_model(oval_session);
+	if (rmodel == NULL)
+		return NULL;
+	struct oval_result_system_iterator *rsystem_it = oval_results_model_get_systems(rmodel);
+	struct oval_syschar_model *model = NULL;
+	if (oval_result_system_iterator_has_more(rsystem_it))
+		model = oval_result_system_get_syschar_model(oval_result_system_iterator_next(rsystem_it));
+	oval_result_system_iterator_free(rsystem_it);
+	return model;
+}
+
+int xccdf_session_print_syschar(struct xccdf_session *session)
+{
+	if (session->oval.agents == NULL)
+		return 0;
+	for (int i = 0; session->oval.agents[i] != NULL; i++) {
+		struct oval_agent_session *agent = session->oval.agents[i];
+		struct oval_syschar_model *model = _xccdf_oval_session_get_syschar_model(agent);
+		if (model == NULL) {
+			oscap_seterr(OSCAP_EFAMILY_OSCAP, "No system characteristics for OVAL file '%s'.", oval_agent_get_filename(agent));
+			return 1;
+		}
+		if (oval_syschar_model_print(model) < 0)
+			return 1;
+	}
+	return 0;
+}
+
 OSCAP_GENERIC_GETTER(struct xccdf_policy_model *, xccdf_session, policy_model, xccdf.policy_model)
 OSCAP_GENERIC_GETTER(float, xccdf_session, base_score, xccdf.base_score);
 

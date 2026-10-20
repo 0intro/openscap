@@ -278,6 +278,33 @@ int oscap_xml_save_filename_free(const char *filename, xmlDocPtr doc)
 	return ret;
 }
 
+int oscap_xml_print(xmlDocPtr doc)
+{
+	/*
+	 * Write through stdio, as the printf of the caller does, so that the
+	 * document follows what the caller printed before.
+	 */
+	xmlOutputBufferPtr buff = xmlOutputBufferCreateFile(stdout, NULL);
+	if (buff == NULL) {
+		oscap_seterr(OSCAP_EFAMILY_XML, "Cannot write to standard output.");
+		return -1;
+	}
+
+	int xmlCode = xmlSaveFormatFileTo(buff, doc, "UTF-8", 1);
+	if (xmlCode <= 0 || fflush(stdout) == EOF || ferror(stdout)) {
+		oscap_seterr(OSCAP_EFAMILY_XML, "Cannot print the XML document on standard output.");
+		return -1;
+	}
+	return 1;
+}
+
+int oscap_xml_print_free(xmlDocPtr doc)
+{
+	int ret = oscap_xml_print(doc);
+	xmlFreeDoc(doc);
+	return ret;
+}
+
 xmlNs *lookup_xsi_ns(xmlDoc *doc)
 {
 	// Look-up xsi namespace pointer. We can be pretty sure that this namespace

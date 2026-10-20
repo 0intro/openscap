@@ -415,3 +415,19 @@ int oval_syschar_model_export(struct oval_syschar_model *model, const char *file
 	return oscap_xml_save_filename_free(file, doc);
 }
 
+int oval_syschar_model_print(struct oval_syschar_model *model)
+{
+
+	__attribute__nonnull__(model);
+
+	LIBXML_TEST_VERSION;
+
+	xmlDocPtr doc = xmlNewDoc(BAD_CAST "1.0");
+	if (doc == NULL) {
+		oscap_setxmlerr(xmlGetLastError());
+		return -1;
+	}
+
+	oval_syschar_model_to_dom(model, doc, NULL, NULL, NULL, true);
+	return oscap_xml_print_free(doc);
+}
