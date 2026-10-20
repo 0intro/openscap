@@ -337,6 +337,7 @@ void *rpmverifypackage_probe_init(void)
 
 #ifdef RPM46_FOUND
 	rpmlogSetCallback(rpmErrorCb, NULL);
+	rpmSetVerbosity(RPMLOG_ERR);
 #endif
 
 	if (CHROOT_IS_SET()) {
