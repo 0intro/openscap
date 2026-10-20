@@ -42,6 +42,7 @@
 #if defined(OS_LINUX)
 # include <mntent.h>
 # include <unistd.h>
+# include <sys/vfs.h>
 # ifndef _PATH_MOUNTED
 #  define _PATH_MOUNTED MOUNTED
 # endif
@@ -110,6 +111,7 @@ static int is_local_fs(struct mntent *ment)
 	const char *pseudo_fs[] = {
 		"proc",
 		"sysfs",
+		"overlay",	/* usually the root of a container, see fsdev_init */
 		NULL
 	};
 	const char *network_fs[] = {
@@ -350,7 +352,44 @@ static fsdev_t *__fsdev_init(fsdev_t *lfs)
 }
 #endif
 
-fsdev_t *fsdev_init()
+#if defined(OS_LINUX)
+#ifndef OVERLAYFS_SUPER_MAGIC
+#define OVERLAYFS_SUPER_MAGIC 0x794c7630
+#endif
+
+/*
+ * is_local_fs leaves out overlay file systems, which usually hold the roots
+ * of containers. add_root_overlay adds the one that holds root, the root of
+ * the walk (NULL or "" for /), as when the scanner runs in the container it
+ * scans. It returns -1 when it runs out of memory.
+ */
+static int add_root_overlay(fsdev_t *lfs, const char *root)
+{
+	struct statfs sfs;
+	struct stat st;
+	dev_t *ids;
+
+	if (root == NULL || *root == '\0')
+		root = "/";
+	if (statfs(root, &sfs) != 0 || sfs.f_type != OVERLAYFS_SUPER_MAGIC)
+		return 0;
+	if (stat(root, &st) != 0)
+		return 0;
+	ids = realloc(lfs->ids, sizeof(dev_t) * (lfs->cnt + 1));
+	if (ids == NULL)
+		return -1;
+	ids[lfs->cnt++] = st.st_dev;
+	lfs->ids = ids;
+	return 0;
+}
+#else
+static int add_root_overlay(fsdev_t *lfs, const char *root)
+{
+	return 0;
+}
+#endif
+
+fsdev_t *fsdev_init(const char *root)
 {
 	fsdev_t *lfs;
 
@@ -361,6 +400,11 @@ fsdev_t *fsdev_init()
 
 	if (__fsdev_init(lfs) == NULL)
 		return (NULL);
+
+	if (add_root_overlay(lfs, root) != 0) {
+		fsdev_free(lfs);
+		return (NULL);
+	}
 
         if (lfs->ids != NULL && lfs->cnt > 1)
                 qsort(lfs->ids, lfs->cnt, sizeof(dev_t), fsdev_cmp);

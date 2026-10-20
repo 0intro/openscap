@@ -45,7 +45,8 @@ static int test_multiple_calls(const char *fake_mtab)
 {
 	/*
 	 * fake mtab contains only 3 local filesystems:
-	 * /, /tmp, and /home
+	 * /, /tmp, and /home. Its overlay mount, the root of a
+	 * container, is not local.
 	 */
 	FILE *f = setmntent(fake_mtab, "r");
 	if (f == NULL) {
