@@ -289,6 +289,7 @@ void *rpminfo_probe_init(void)
 {
 #ifdef RPM46_FOUND
 	rpmlogSetCallback(rpmErrorCb, NULL);
+	rpmSetVerbosity(RPMLOG_ERR);
 #endif
 	struct rpm_probe_global *g_rpm = malloc(sizeof(struct rpm_probe_global));
 	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
