@@ -11,6 +11,10 @@ add_oscap_test_executable(test_xccdf_overrides
 	"test_xccdf_overrides.c"
 )
 
+add_oscap_test_executable(test_xccdf_session_print_syschar
+	"test_xccdf_session_print_syschar.c"
+)
+
 add_oscap_test_executable(test_xccdf_shall_pass
 	test_xccdf_shall_pass.c
 	unit_helper.c
@@ -121,6 +125,7 @@ add_oscap_test("test_reference.sh")
 add_oscap_test("test_remediation_bootc.sh")
 add_oscap_test("openscap_2289_regression.sh")
 add_oscap_test("test_null_ptr_regression.sh")
+add_oscap_test("test_xccdf_session_print_syschar.sh")
 
 set_tests_properties(
      "API/XCCDF/unittests/test_deriving_xccdf_result_from_oval2.sh"

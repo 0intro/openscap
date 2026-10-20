@@ -85,6 +85,20 @@ int oscap_xml_save_fd(int fd, xmlDocPtr doc);
  */
 int oscap_xml_save_filename_free(const char *filename, xmlDocPtr doc);
 
+/**
+ * Print XML Document on standard output.
+ * @param doc the XML document content
+ * @return 1 on success, -1 on failure (oscap_seterr is set).
+ */
+int oscap_xml_print(xmlDocPtr doc);
+
+/**
+ * Print XML Document on standard output and dispose the document afterwards.
+ * @param doc the XML document content
+ * @return 1 on success, -1 on failure (oscap_seterr is set).
+ */
+int oscap_xml_print_free(xmlDocPtr doc);
+
 xmlNs *lookup_xsi_ns(xmlDoc *doc);
 
 #endif
