@@ -26,5 +26,6 @@
 #include "probe-api.h"
 
 int inetlisteningservers_probe_main(probe_ctx *ctx, void *arg);
+int inetlisteningservers_probe_offline_mode_supported(void);
 
 #endif /* OPENSCAP_INETLISTENINGSERVERS_PROBE_H */

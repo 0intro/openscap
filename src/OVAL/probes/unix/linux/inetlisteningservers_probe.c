@@ -55,6 +55,8 @@
 #include <stdio_ext.h>
 #include <errno.h>
 #include <dirent.h>
+#include <limits.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -62,6 +64,7 @@
 
 #include "_seap.h"
 #include "probe-api.h"
+#include "probe/probe.h"
 #include "probe/entcmp.h"
 #include "common/debug_priv.h"
 #include "inetlisteningservers_probe.h"
@@ -171,19 +174,21 @@ static lnode *list_find_inode(llist *l, unsigned long i)
 	return NULL;
 }
 
-static int collect_process_info(llist *l)
+static int collect_process_info(llist *l, const char *root)
 {
 	DIR *d, *f;
 	struct dirent *ent;
+	char proc[PATH_MAX];
 
-	d = opendir("/proc");
+	snprintf(proc, sizeof(proc), "%s/proc", root);
+	d = opendir(proc);
 	if (d == NULL)
 		return 1;
 
 	while (( ent = readdir(d) )) {
 		FILE *sf;
 		int pid, ppid;
-		char buf[100];
+		char buf[PATH_MAX];
 		char *tmp, cmd[16], state, *text = NULL;
 		int fd, len, euid = 0;
 
@@ -196,7 +201,7 @@ static int collect_process_info(llist *l)
 			continue;
 
 		// Parse up the stat file for the proc
-		snprintf(buf, 32, "/proc/%d/stat", pid);
+		snprintf(buf, sizeof(buf), "%s/proc/%d/stat", root, pid);
 		fd = open(buf, O_RDONLY, 0);
 		if (fd < 0)
 			continue;
@@ -219,7 +224,7 @@ static int collect_process_info(llist *l)
 			continue;
 
 		// Get the effective uid
-		snprintf(buf, 32, "/proc/%d/status", pid);
+		snprintf(buf, sizeof(buf), "%s/proc/%d/status", root, pid);
 		sf = fopen(buf, "rt");
 		if (sf) {
 			int line = 0;
@@ -240,7 +245,7 @@ static int collect_process_info(llist *l)
 		}
 
 		// Now lets get the inodes each process has open
-		snprintf(buf, 32, "/proc/%d/fd", pid);
+		snprintf(buf, sizeof(buf), "%s/proc/%d/fd", root, pid);
 		f = opendir(buf);
 		if (f == NULL) {
 			// Process might have ended or we don;t have access - ignore it
@@ -397,23 +402,16 @@ static void addr_convert(const char *src, char *dest, int size)
 }
 
 
-static int read_tcp(const char *proc, const char *type, llist *l, probe_ctx *ctx, struct server_info *req)
+/* read_tcp_file reports the listening sockets of the open table f, and closes it */
+static int read_tcp_file(FILE *f, const char *type, llist *l, probe_ctx *ctx, struct server_info *req)
 {
 	int line = 0;
-	FILE *f;
 	char buf[256];
 	unsigned long rxq, txq, time_len, retr, inode;
 	unsigned local_port, rem_port, uid;
 	int d, state, timer_run, timeout;
 	char rem_addr[128], local_addr[128], more[512];
 
-	f = fopen(proc, "rt");
-	if (f == NULL) {
-		if (errno != ENOENT)
-			return 1;
-		else
-			return 0;
-	}
 	__fsetlocking(f, FSETLOCKING_BYCALLER);
 	while (fgets(buf, sizeof(buf), f)) {
 		if (line == 0) {
@@ -447,6 +445,18 @@ static int read_tcp(const char *proc, const char *type, llist *l, probe_ctx *ctx
 	}
 	fclose(f);
 	return 0;
+}
+
+static int read_tcp(const char *proc, const char *type, llist *l, probe_ctx *ctx, struct server_info *req)
+{
+	FILE *f = fopen(proc, "rt");
+	if (f == NULL) {
+		if (errno != ENOENT)
+			return 1;
+		else
+			return 0;
+	}
+	return read_tcp_file(f, type, l, ctx, req);
 }
 
 static int read_udp(const char *proc, const char *type, llist *l, probe_ctx *ctx, struct server_info *req)
@@ -581,9 +591,30 @@ int inetlisteningservers_probe_main(probe_ctx *ctx, void *arg)
 		goto cleanup;
 	}
 
+	/*
+	 * /proc/net lists the sockets of the reading process's network
+	 * namespace, so under a probe root read those of the root's init.
+	 */
+	const char *root = getenv("OSCAP_PROBE_ROOT");
+	if (root == NULL)
+		root = "";
+	const char *net = *root != '\0' ? "/proc/1/net" : "/proc/net";
+	char path[PATH_MAX];
+	FILE *tcp = NULL;
+	if (*root != '\0') {
+		/* a root without the sockets of its init, as a disk image */
+		snprintf(path, sizeof(path), "%s%s/tcp", root, net);
+		tcp = fopen(path, "rt");
+		if (tcp == NULL && errno == ENOENT) {
+			probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
+			err = 0;
+			goto cleanup;
+		}
+	}
+
 	// Now start collecting the info
 	list_create(&ll);
-	if (collect_process_info(&ll)) {
+	if (collect_process_info(&ll, root)) {
 		SEXP_t *msg;
 
 		msg = probe_msg_creat(OVAL_MESSAGE_LEVEL_ERROR, "Permission error.");
@@ -591,22 +622,34 @@ int inetlisteningservers_probe_main(probe_ctx *ctx, void *arg)
 		SEXP_free(msg);
 		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_ERROR);
 
+		if (tcp != NULL)
+			fclose(tcp);
 		err = 0;
 		goto cleanup;
 	}
 
 	// Now we check the tcp socket list...
-	read_tcp("/proc/net/tcp", "tcp", &ll, ctx, req);
-	read_tcp("/proc/net/tcp6", "tcp", &ll, ctx, req);
+	if (tcp != NULL) {
+		read_tcp_file(tcp, "tcp", &ll, ctx, req);
+	} else {
+		snprintf(path, sizeof(path), "%s%s/tcp", root, net);
+		read_tcp(path, "tcp", &ll, ctx, req);
+	}
+	snprintf(path, sizeof(path), "%s%s/tcp6", root, net);
+	read_tcp(path, "tcp", &ll, ctx, req);
 
 	// Next udp sockets...
-	read_udp("/proc/net/udp", "udp", &ll, ctx, req);
-	read_udp("/proc/net/udp6", "udp", &ll, ctx, req);
+	snprintf(path, sizeof(path), "%s%s/udp", root, net);
+	read_udp(path, "udp", &ll, ctx, req);
+	snprintf(path, sizeof(path), "%s%s/udp6", root, net);
+	read_udp(path, "udp", &ll, ctx, req);
 
 	// Next, raw sockets...not exactly part of standard yet. They
 	// can be used to send datagrams, so we will pretend they are udp
-	read_raw("/proc/net/raw", "udp", &ll, ctx, req);
-	read_raw("/proc/net/raw6", "udp", &ll, ctx, req);
+	snprintf(path, sizeof(path), "%s%s/raw", root, net);
+	read_raw(path, "udp", &ll, ctx, req);
+	snprintf(path, sizeof(path), "%s%s/raw6", root, net);
+	read_raw(path, "udp", &ll, ctx, req);
 
 	list_clear(&ll);
 
@@ -618,4 +661,9 @@ int inetlisteningservers_probe_main(probe_ctx *ctx, void *arg)
 	free(req);
 
 	return err;
+}
+
+int inetlisteningservers_probe_offline_mode_supported(void)
+{
+	return PROBE_OFFLINE_OWN;
 }
