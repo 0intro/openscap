@@ -447,6 +447,9 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 			}
 		}
 		xccdf_operator_t operator = xccdf_value_binding_get_operator(binding);
+		/* no operator attribute: XCCDF defaults to equals */
+		if (operator == 0)
+			operator = XCCDF_OPERATOR_EQUALS;
 
 		char* type_str;
 		switch (type)
