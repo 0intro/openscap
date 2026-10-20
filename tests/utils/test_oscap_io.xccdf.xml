@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2" id="xccdf_org.open-scap_benchmark_oscap_io" resolved="1" xml:lang="en-US">
+  <status>accepted</status>
+  <version>1.0</version>
+  <Profile id="xccdf_org.open-scap_profile_oscap_io">
+    <title>oscap-io</title>
+    <select idref="xccdf_org.open-scap_rule_pass" selected="true"/>
+    <select idref="xccdf_org.open-scap_rule_fail" selected="true"/>
+  </Profile>
+  <Rule id="xccdf_org.open-scap_rule_pass" selected="false">
+    <title>The value is 100</title>
+    <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+      <check-content-ref href="test_oscap_io.oval.xml" name="oval:x:def:1"/>
+    </check>
+  </Rule>
+  <Rule id="xccdf_org.open-scap_rule_fail" selected="false">
+    <title>The value is 0</title>
+    <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+      <check-content-ref href="test_oscap_io.oval.xml" name="oval:x:def:2"/>
+    </check>
+  </Rule>
+</Benchmark>

@@ -155,3 +155,5 @@ if(ENABLE_OSCAP_UTIL_AS_RPM)
 		DESTINATION "${CMAKE_INSTALL_MANDIR}/man8"
 	)
 endif()
+
+add_subdirectory("oscap-io")
