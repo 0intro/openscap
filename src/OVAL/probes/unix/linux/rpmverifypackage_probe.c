@@ -145,6 +145,41 @@ static int adjust_filter(rpmdbMatchIterator iterator, SEXP_t *ent, rpmTag rpm_ta
 	return ret;
 }
 
+/*
+ * Check the dependencies of the package in h against the database of the
+ * scanned root. The check uses the transaction set of the probe, whose root
+ * directory rpmverifypackage_probe_init set, as rpm -Va checks each package
+ * with the transaction set that iterates over them. Return the number of
+ * dependency problems.
+ */
+static int verify_dependencies_offline(Header h, struct verifypackage_global *g_rpm)
+{
+	struct rpmQVKArguments_s qva;
+	rpmts ts = g_rpm->rpm.rpmts;
+	rpmVSFlags vsflags;
+	int mask, ret;
+
+	memset(&qva, 0, sizeof(qva));
+	qva.qva_flags = (rpmQueryFlags) VERIFY_DEPS;
+
+	/*
+	 * Drop the notices that list the problems, as --quiet does online.
+	 * The check reads the header of each package that provides a
+	 * dependency, and rpm checks a header again on each read until a
+	 * check succeeds: with rpm-sequoia, every read of a RHEL 8 header
+	 * logs a failed signature check. Skip the header checks here and
+	 * leave them to the iteration over the packages.
+	 */
+	mask = rpmlogSetMask(0);
+	rpmlogSetMask(mask & RPMLOG_UPTO(RPMLOG_WARNING));
+	vsflags = rpmtsSetVSFlags(ts, rpmtsVSFlags(ts) | RPMVSF_NOHDRCHK);
+	ret = showVerifyPackage(&qva, ts, h);
+	rpmtsSetVSFlags(ts, vsflags);
+	rpmlogSetMask(mask);
+
+	return ret;
+}
+
 static int rpmverify_collect(probe_ctx *ctx,
 			     SEXP_t *name_ent, SEXP_t *epoch_ent, SEXP_t *version_ent, SEXP_t *release_ent, SEXP_t *arch_ent,
 			     uint64_t flags,
@@ -242,6 +277,21 @@ static int rpmverify_collect(probe_ctx *ctx,
 			if (flags & rpmverifypackage_bhmap[i].a_flag)
 				continue;
 
+			if (CHROOT_IS_SET()) {
+				/*
+				 * rpm --root runs the verification script of a
+				 * package inside the root, as root: code of the
+				 * scanned system would run on this one. Offline,
+				 * check the dependencies alone.
+				 */
+				if (rpmverifypackage_bhmap[i].a_flag != VERIFY_DEPS)
+					continue;
+				res.vflags |= VERIFY_DEPS;
+				if (verify_dependencies_offline(pkgh, g_rpm) == 0)
+					res.vresults |= VERIFY_DEPS;
+				continue;
+			}
+
 			for (j = 0; j < sizeof rpmverifypackage_bhmap/sizeof(rpmverifypackage_bhmap_t); ++j) {
 				if (j == i)
 					continue;
@@ -250,15 +300,6 @@ static int rpmverify_collect(probe_ctx *ctx,
 			}
 			rpmcli_argv[rpmcli_argc++] = res.name;
 			rpmcli_argv[rpmcli_argc] = NULL;
-
-			if (CHROOT_IS_SET())
-			{
-				rpmLibsPreload();
-				if (CHROOT_ENTER() < 0) {
-					ret = 1;
-					goto ret;
-				}
-			}
 
 			rpmcli_context = rpmcliInit(rpmcli_argc, (char * const*)rpmcli_argv, optionsTable);
 			qva = &rpmQVKArgs;
@@ -284,15 +325,7 @@ static int rpmverify_collect(probe_ctx *ctx,
 			rpmts ts = rpmtsCreate();
 			char* const * args = (char* const *)poptGetArgs(rpmcli_context);
 
-			if (CHROOT_IS_SET()){
-
-				// plugins for offline mode can cause, that .so from
-				// container are loaded - we don't want it
-				DISABLE_PLUGINS(ts);
-				CHROOT_LEAVE();
-			} else {
-				ret = rpmcliVerify(ts, qva, args);
-			}
+			ret = rpmcliVerify(ts, qva, args);
 
 			ts = rpmtsFree(ts);
 			rpmcli_context = rpmcliFini(rpmcli_context);
