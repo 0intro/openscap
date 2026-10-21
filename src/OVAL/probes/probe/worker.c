@@ -1100,6 +1100,7 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
 		SEXP_t *varrefs, *mask;
 
 		pctx.offline_mode = probe->selected_offline_mode;
+		pctx.real_root_fd = probe->real_root_fd;
 
 		pctx.max_mem_ratio = OSCAP_PROBE_MEMORY_USAGE_RATIO_DEFAULT;
 		char *max_ratio_str = getenv("OSCAP_PROBE_MEMORY_USAGE_RATIO");

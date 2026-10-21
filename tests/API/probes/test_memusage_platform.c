@@ -13,8 +13,8 @@ int main(void)
 {
 	struct sys_memusage sys_mu = {0};
 	struct proc_memusage proc_mu = {0};
-	int ret_sys = oscap_sys_memusage(&sys_mu);
-	int ret_proc = oscap_proc_memusage(&proc_mu);
+	int ret_sys = oscap_sys_memusage(-1, &sys_mu);
+	int ret_proc = oscap_proc_memusage(-1, &proc_mu);
 
 #if defined(OS_LINUX) || defined(OS_FREEBSD) || defined(OS_APPLE)
 	if (ret_sys != 0) {
