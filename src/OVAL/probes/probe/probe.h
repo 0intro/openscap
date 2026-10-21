@@ -93,6 +93,7 @@ struct probe_ctx {
         SEXP_t         *filters;   /**< object filters (OVAL 5.8 and higher) */
         probe_icache_t *icache;    /**< item cache */
 	int offline_mode;
+	int real_root_fd; /**< root directory of the scanner in PROBE_OFFLINE_CHROOT mode, else -1 */
 	double max_mem_ratio;
 	size_t collected_items;
 	size_t max_collected_items;

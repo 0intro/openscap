@@ -527,9 +527,9 @@ int main (void)
 	        struct sys_memusage mu_sys;
 	        struct proc_memusage mu_proc;
 
-	        if (oscap_sys_memusage(&mu_sys) != 0)
+	        if (oscap_sys_memusage(-1, &mu_sys) != 0)
 		        FAIL(1, "oscap_sys_memusage != 0\n");
-	        if (oscap_proc_memusage(&mu_proc) != 0)
+	        if (oscap_proc_memusage(-1, &mu_proc) != 0)
 		        FAIL(1, "oscap_proc_memusage != 0\n");
 
 	        printf("mu_sys:\n"
