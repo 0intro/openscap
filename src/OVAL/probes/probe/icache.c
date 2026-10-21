@@ -500,7 +500,7 @@ int probe_icache_nop(probe_icache_t *cache)
  * Returns 0 if the memory constraints are not reached. Otherwise, 1 is returned.
  * In case of an error, -1 is returned.
  */
-static int probe_cobj_memcheck(size_t item_cnt, double max_ratio)
+static int probe_cobj_memcheck(size_t item_cnt, double max_ratio, int rootfd)
 {
 	if (item_cnt > PROBE_RESULT_MEMCHECK_CTRESHOLD) {
 		struct proc_memusage mu_proc;
@@ -510,10 +510,10 @@ static int probe_cobj_memcheck(size_t item_cnt, double max_ratio)
 		memset(&mu_proc, 0, sizeof(mu_proc));
 		memset(&mu_sys, 0, sizeof(mu_sys));
 
-		if (oscap_proc_memusage (&mu_proc) != 0)
+		if (oscap_proc_memusage (rootfd, &mu_proc) != 0)
 			return (-1);
 
-		if (oscap_sys_memusage (&mu_sys) != 0)
+		if (oscap_sys_memusage (rootfd, &mu_sys) != 0)
 			return (-1);
 
 		c_ratio = (double)mu_proc.mu_rss/(double)(mu_sys.mu_total);
@@ -585,7 +585,7 @@ int probe_item_collect(struct probe_ctx *ctx, SEXP_t *item)
 		return 2;
 	}
 
-	int memcheck_ret = probe_cobj_memcheck(ctx->collected_items, ctx->max_mem_ratio);
+	int memcheck_ret = probe_cobj_memcheck(ctx->collected_items, ctx->max_mem_ratio, ctx->real_root_fd);
 	if (memcheck_ret == -1) {
 		dE("Failed to check available memory");
 		SEXP_free(item);

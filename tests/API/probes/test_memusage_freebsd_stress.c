@@ -28,7 +28,7 @@ static void *worker(void *arg)
 	for (i = 0; i < STRESS_ITERATIONS; ++i) {
 		struct proc_memusage proc_mu = {0};
 
-		if (oscap_proc_memusage(&proc_mu) != 0) {
+		if (oscap_proc_memusage(-1, &proc_mu) != 0) {
 			result->err = errno ? errno : -1;
 			return NULL;
 		}
