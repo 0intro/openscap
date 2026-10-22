@@ -148,6 +148,19 @@ static int is_local_fs(struct mntent *ment)
 	return 1;
 }
 
+/*
+ * /etc/mtab links to /proc/self/mounts. Some container runtimes,
+ * containerd among them, create containers without the link.
+ */
+static FILE *open_mount_table(void)
+{
+	FILE *fp = setmntent(_PATH_MOUNTED, "r");
+
+	if (fp == NULL && errno == ENOENT)
+		fp = setmntent("/proc/self/mounts", "r");
+	return fp;
+}
+
 #elif defined(OS_AIX)
 static int is_local_fs(struct mntent *ment)
 {
@@ -176,6 +189,11 @@ static int is_local_fs(struct mntent *ment)
 	return 1;
 }
 
+static FILE *open_mount_table(void)
+{
+	return setmntent(_PATH_MOUNTED, "r");
+}
+
 #endif /* OS_AIX */
 
 static fsdev_t *__fsdev_init(fsdev_t *lfs)
@@ -187,7 +205,7 @@ static fsdev_t *__fsdev_init(fsdev_t *lfs)
 	struct mntent *ment;
 	struct stat st;
 
-	fp = setmntent(_PATH_MOUNTED, "r");
+	fp = open_mount_table();
 	if (fp == NULL) {
 		e = errno;
 		free(lfs);
