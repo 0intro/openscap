@@ -55,8 +55,13 @@ function test_probes_rpmverifypackage {
     assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:extended_name'
     assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:dependency_check_passed'
     assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:dependency_check_passed[@datatype="boolean"]'
-    assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:verification_script_successful'
-    assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:verification_script_successful[@datatype="boolean"]'
+    if [[ -n "$OSCAP_PROBE_ROOT" ]]; then
+        # Offline, the probe skips the verification scripts of the root.
+        assert_exists 0 $q'lin-sys:rpmverifypackage_item/lin-sys:verification_script_successful'
+    else
+        assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:verification_script_successful'
+        assert_exists 1 $q'lin-sys:rpmverifypackage_item/lin-sys:verification_script_successful[@datatype="boolean"]'
+    fi
 
     rm -f $RF
     rm -f $DF
