@@ -30,7 +30,12 @@ struct sys_memusage {
 	size_t mu_inactive;
 };
 
-int oscap_proc_memusage(struct proc_memusage *mu);
-int oscap_sys_memusage(struct sys_memusage *mu);
+/*
+ * oscap_proc_memusage and oscap_sys_memusage measure the memory of this
+ * process and of the system. On Linux they read /proc in the root directory
+ * open as rootfd, or in the current root if rootfd is -1.
+ */
+int oscap_proc_memusage(int rootfd, struct proc_memusage *mu);
+int oscap_sys_memusage(int rootfd, struct sys_memusage *mu);
 
 #endif /* MEMUSAGE_H */

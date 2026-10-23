@@ -32,6 +32,10 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdint.h>
+#ifndef OS_WINDOWS
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #if defined(OS_FREEBSD)
 #include <limits.h>
@@ -96,7 +100,28 @@ static int cmpkey (const char *a, const struct stat_parser *b)
 	return strcmp(a, b->keyword);
 }
 
-static int read_status(const char *source, void *base, struct stat_parser *spt, size_t spt_size)
+/*
+ * Open path, an absolute path, for reading in the root directory open as
+ * rootfd, or in the current root if rootfd is -1. openat resolves path + 1,
+ * the path without its leading slash, from rootfd.
+ */
+static FILE *open_status(int rootfd, const char *path)
+{
+	int fd;
+	FILE *fp;
+
+	if (rootfd == -1)
+		return fopen(path, "r");
+	fd = openat(rootfd, path + 1, O_RDONLY | O_CLOEXEC);
+	if (fd == -1)
+		return NULL;
+	fp = fdopen(fd, "r");
+	if (fp == NULL)
+		close(fd);
+	return fp;
+}
+
+static int read_status(int rootfd, const char *source, void *base, struct stat_parser *spt, size_t spt_size)
 {
 	FILE *fp;
 	size_t processed;
@@ -115,7 +140,7 @@ static int read_status(const char *source, void *base, struct stat_parser *spt, 
 		}
 	}
 #endif
-	fp = fopen(source, "r");
+	fp = open_status(rootfd, source);
 
 	if (fp == NULL)
 		return -1;
@@ -298,12 +323,12 @@ static int freebsd_proc_memusage(struct proc_memusage *mu)
 
 #endif /* OS_FREEBSD */
 
-int oscap_sys_memusage(struct sys_memusage *mu)
+int oscap_sys_memusage(int rootfd, struct sys_memusage *mu)
 {
 	if (mu == NULL)
 		return -1;
 #if defined(OS_LINUX)
-	if (read_status(MEMUSAGE_LINUX_SYS_STATUS,
+	if (read_status(rootfd, MEMUSAGE_LINUX_SYS_STATUS,
 	                mu, __sys_stat_ptable,
 	                (sizeof __sys_stat_ptable)/sizeof(struct stat_parser)) != 0)
 	{
@@ -347,12 +372,12 @@ int oscap_sys_memusage(struct sys_memusage *mu)
 	return 0;
 }
 
-int oscap_proc_memusage(struct proc_memusage *mu)
+int oscap_proc_memusage(int rootfd, struct proc_memusage *mu)
 {
 	if (mu == NULL)
 		return -1;
 #if defined(OS_LINUX)
-	if (read_status(MEMUSAGE_LINUX_PROC_STATUS,
+	if (read_status(rootfd, MEMUSAGE_LINUX_PROC_STATUS,
 	                mu,  __proc_stat_ptable,
 	                (sizeof __proc_stat_ptable)/sizeof(struct stat_parser)) != 0)
 	{

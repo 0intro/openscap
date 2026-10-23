@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<oval_definitions xmlns:oval-def="http://oval.mitre.org/XMLSchema/oval-definitions-5" xmlns:oval="http://oval.mitre.org/XMLSchema/oval-common-5" xmlns:unix="http://oval.mitre.org/XMLSchema/oval-definitions-5#unix" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5" xsi:schemaLocation="http://oval.mitre.org/XMLSchema/oval-definitions-5#unix unix-definitions-schema.xsd http://oval.mitre.org/XMLSchema/oval-definitions-5 oval-definitions-schema.xsd http://oval.mitre.org/XMLSchema/oval-common-5 oval-common-schema.xsd">
+  <generator>
+    <oval:schema_version>5.11</oval:schema_version>
+    <oval:timestamp>0001-01-01T00:00:00+00:00</oval:timestamp>
+  </generator>
+
+  <definitions>
+    <definition class="compliance" version="1" id="oval:x:def:1">
+      <metadata>
+        <title>x</title>
+        <description>x</description>
+        <affected family="unix">
+          <platform>x</platform>
+        </affected>
+      </metadata>
+      <criteria>
+        <criterion test_ref="oval:x:tst:1" comment="every service in every runlevel"/>
+      </criteria>
+    </definition>
+  </definitions>
+
+  <tests>
+    <unix:runlevel_test id="oval:x:tst:1" version="1" comment="x" check="all" check_existence="at_least_one_exists">
+      <unix:object object_ref="oval:x:obj:1"/>
+    </unix:runlevel_test>
+  </tests>
+
+  <objects>
+    <unix:runlevel_object id="oval:x:obj:1" version="1" comment="The object matches the 150 services of the root in the 7 runlevels.">
+      <unix:service_name operation="pattern match">^service[0-9]+$</unix:service_name>
+      <unix:runlevel operation="pattern match">^[0-6]$</unix:runlevel>
+    </unix:runlevel_object>
+  </objects>
+
+</oval_definitions>
