@@ -1,0 +1,30 @@
+# The datadog branch: the upstream OpenSCAP commit at the base, then one
+# commit for every commit of these branches, cherry-picked in this order by
+# .datadog/datadog.py. release names the newest upstream release in the
+# base's history, which names the tags. Recorded resolutions live in
+# .datadog/resolve.
+base: af8cd99abf97f9f2c3b44378e144e88df634f56d
+release: "1.4.6"
+upstream: OpenSCAP/openscap
+entries:
+  - pick: djc/fsdev-ignore-host
+  - pick: djc/fsdev-proc-self-mounts
+  - pick: djc/systemd-dbus-address
+  - pick: djc/rpm-verbosity-err
+  - pick: djc/session-print-syschar
+  - pick: djc/memusage-cgroup
+  - pick: djc/oval_probe_session_reset
+  - pick: djc/probe-wait-workers
+    pr: 2460
+  - pick: djc/sysctl-probe-offline-skip
+  - pick: djc/probes-no-procfs
+    pr: 2454
+  - pick: djc/oscap-io
+  - pick: djc/dpkginfo-virtual-packages-revert
+  - pick: djc/sce-noexec-interpreter
+  - pick: djc/sce-probe-root
+  - pick: djc/probe-root-paths
+  - pick: djc/inetlisteningservers-probe-root
+  - pick: djc/sce-default-operator
+  - pick: djc/sce-stdin-null
+  - pick: datadog-release
