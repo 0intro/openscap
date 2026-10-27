@@ -1,0 +1,144 @@
+name: Datadog Release
+on:
+  push:
+    branches: ['datadog']
+    tags: ['v*.*.*-dd.*']
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    name: Check the datadog branch, write the tarball
+    if: github.repository == '0intro/openscap'
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:a32cc6149ce88510a5e23ce249d42681d61758d5851c398d29a76e5c94d1ed72
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Install Deps
+        run: dnf install -y git python3-pyyaml
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Test the tooling
+        run: python3 -m unittest discover -s .datadog/tests
+      - name: Check that datadog holds every branch of the list, cherry-picked
+        run: |
+          git config --global --add safe.directory '*'
+          python3 .datadog/datadog.py --remote origin check --trailers "$GITHUB_SHA"
+      - name: Name the version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          key() { python3 -c 'import sys, yaml; print(yaml.safe_load(open(".datadog/branches.yml"))[sys.argv[1]])' "$1"; }
+          base=$(key base) release=$(key release) upstream=$(key upstream)
+          git fetch -q --no-tags "https://github.com/$upstream" 'refs/tags/*:refs/upstream/*'
+          newest=$(git for-each-ref --merged "$base" --sort=-version:refname --format='%(refname:strip=2)' refs/upstream/ |
+            grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          test "$newest" = "$release" ||
+            { echo "branches.yml names release $release, the base $base carries $upstream ${newest:-no release}"; exit 1; }
+          date=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y%m%d "$base")
+          case "$GITHUB_REF" in
+          refs/tags/*)
+            tag=${GITHUB_REF#refs/tags/}
+            test "$(git rev-parse "$GITHUB_SHA")" = "$(git rev-parse refs/remotes/origin/datadog)" ||
+              { echo "$tag does not point at the head of datadog"; exit 1; }
+            case "$tag" in
+            "v$release-dd.$date".*) ;;
+            *) echo "$tag should start with v$release-dd.$date (upstream release, base date)"; exit 1 ;;
+            esac
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+            test "$code" = 404 ||
+              { echo "$tag: the release exists already (HTTP $code), so tag the next N"; exit 1; }
+            ;;
+          *)
+            tag=v$release-dd.$date.0
+            ;;
+          esac
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - name: Write the tarball and the notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 .datadog/datadog.py tarball "$VERSION" tarball --rev "$GITHUB_SHA"
+          python3 .datadog/datadog.py --remote origin notes "v$VERSION" notes --rev "$GITHUB_SHA" \
+            --tarball tarball/tarball.json
+      - name: Keep the tarball
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tarball
+          path: tarball/
+          retention-days: 14
+      - name: Keep the notes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes
+          path: notes/
+          retention-days: 14
+  build:
+    name: Build and test the tarball
+    needs: check
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:a32cc6149ce88510a5e23ce249d42681d61758d5851c398d29a76e5c94d1ed72
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - name: Install Deps
+        run: dnf install -y cmake git procps-ng dbus-devel libacl-devel libblkid-devel libcap-devel libcurl-devel libgcrypt-devel libselinux-devel libxml2-devel libxslt-devel libattr-devel make openldap-devel pcre2-devel perl-XML-Parser perl-XML-XPath perl-devel python3-devel python3-dbusmock rpm-devel swig bzip2-devel gcc-c++ libyaml-devel xmlsec1-devel xmlsec1-openssl-devel hostname bzip2 lua rpm-build which strace python3-pytest
+      - name: Fetch the tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tarball
+          path: tarball
+      - name: Check the sums and extract
+        run: |
+          (cd tarball && sha256sum -c "openscap-$VERSION.tar.gz.sha256" && sha512sum -c "openscap-$VERSION.tar.gz.sha512")
+          tar -xzf "tarball/openscap-$VERSION.tar.gz"
+          mkdir "openscap-$VERSION/build"
+      - name: Build
+        working-directory: openscap-${{ env.VERSION }}/build
+        run: |
+          cmake -DCMAKE_COMPILE_WARNING_AS_ERROR=True -DCMAKE_BUILD_TYPE=RelWithDebInfo ../
+          make all
+      - name: Test
+        working-directory: openscap-${{ env.VERSION }}/build
+        run: |
+          export $(dbus-launch)
+          ctest --output-on-failure -j$(nproc)
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - name: Fetch the tarball and the notes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - name: Attest build provenance
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4
+        with:
+          subject-path: |
+            tarball/openscap-*.tar.gz
+            tarball/openscap-*.tar.gz.sha256
+            tarball/openscap-*.tar.gz.sha512
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF#refs/tags/}" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "OpenSCAP $VERSION" --notes-file notes/notes.md \
+            "tarball/openscap-$VERSION.tar.gz" "tarball/openscap-$VERSION.tar.gz.sha256" \
+            "tarball/openscap-$VERSION.tar.gz.sha512" notes/manifest.json
