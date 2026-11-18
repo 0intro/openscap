@@ -34,6 +34,11 @@
 #include <libexslt/exslt.h>
 #include <string.h>
 #ifndef OS_WINDOWS
+#include <dlfcn.h>
+#include <limits.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #else
 #include <io.h>
@@ -54,11 +59,11 @@
 #include "source/xslt_priv.h"
 #include "oscap_helpers.h"
 
+#ifdef OS_WINDOWS
 const char *const OSCAP_SCHEMA_PATH = OSCAP_DEFAULT_SCHEMA_PATH;
 const char *const OSCAP_XSLT_PATH = OSCAP_DEFAULT_XSLT_PATH;
 const char *const OSCAP_CPE_PATH = OSCAP_DEFAULT_CPE_PATH;
 
-#ifdef OS_WINDOWS
 static const char *_get_default_path(const char *defpath)
 {
 	/* On Windows, default paths are directory names of directories that are
@@ -73,8 +78,52 @@ static const char *_get_default_path(const char *defpath)
 	return path;
 }
 #else
+static char OSCAP_SCHEMA_PATH[PATH_MAX] = OSCAP_DEFAULT_SCHEMA_PATH;
+static char OSCAP_XSLT_PATH[PATH_MAX] = OSCAP_DEFAULT_XSLT_PATH;
+static char OSCAP_CPE_PATH[PATH_MAX] = OSCAP_DEFAULT_CPE_PATH;
+
+static pthread_once_t default_paths_once = PTHREAD_ONCE_INIT;
+
+static void _set_relative_path(char *dst, const char *prefix, const char *suffix)
+{
+	char path[PATH_MAX];
+	int len = snprintf(path, sizeof(path), "%s/%s", prefix, suffix);
+
+	if (len > 0 && (size_t)len < sizeof(path))
+		memcpy(dst, path, len + 1);
+}
+
+/*
+ * Resolve the default paths relative to the installation prefix, the parent
+ * of the directory that holds libopenscap. The build-time values are kept if
+ * the prefix cannot be determined.
+ */
+static void _init_default_paths(void)
+{
+	Dl_info info;
+	char prefix[PATH_MAX];
+	char *sep;
+	int i;
+
+	if (dladdr((void *)_init_default_paths, &info) == 0
+	    || info.dli_fname == NULL
+	    || info.dli_fname[0] != '/'
+	    || realpath(info.dli_fname, prefix) == NULL)
+		return;
+	for (i = 0; i < 2; i++) {
+		sep = strrchr(prefix, '/');
+		if (sep == NULL)
+			return;
+		*sep = '\0';
+	}
+	_set_relative_path(OSCAP_SCHEMA_PATH, prefix, "share/openscap/schemas");
+	_set_relative_path(OSCAP_XSLT_PATH, prefix, "share/openscap/xsl");
+	_set_relative_path(OSCAP_CPE_PATH, prefix, "share/openscap/cpe");
+}
+
 static const char *_get_default_path(const char *defpath)
 {
+	pthread_once(&default_paths_once, _init_default_paths);
 	return defpath;
 }
 #endif
