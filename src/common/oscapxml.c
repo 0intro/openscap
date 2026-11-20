@@ -84,41 +84,46 @@ static char OSCAP_CPE_PATH[PATH_MAX] = OSCAP_DEFAULT_CPE_PATH;
 
 static pthread_once_t default_paths_once = PTHREAD_ONCE_INIT;
 
-static void _set_relative_path(char *dst, const char *prefix, const char *suffix)
+static void _set_relative_path(char *dst, const char *dir, const char *rel, const char *suffix)
 {
 	char path[PATH_MAX];
-	int len = snprintf(path, sizeof(path), "%s/%s", prefix, suffix);
+	int len = snprintf(path, sizeof(path), "%s/%s/%s", dir, rel, suffix);
 
 	if (len > 0 && (size_t)len < sizeof(path))
 		memcpy(dst, path, len + 1);
 }
 
 /*
- * Resolve the default paths relative to the installation prefix, the parent
- * of the directory that holds libopenscap. The build-time values are kept if
- * the prefix cannot be determined.
+ * Resolve the default paths from the directory that holds libopenscap and
+ * OSCAP_LIBDIR_TO_DATADIR, the path from that directory to the data
+ * directory. The build-time values stay if the library cannot be located.
  */
 static void _init_default_paths(void)
 {
 	Dl_info info;
-	char prefix[PATH_MAX];
+	char dir[PATH_MAX];
+	const char *rel;
 	char *sep;
-	int i;
+	int i, up;
 
 	if (dladdr((void *)_init_default_paths, &info) == 0
 	    || info.dli_fname == NULL
 	    || info.dli_fname[0] != '/'
-	    || realpath(info.dli_fname, prefix) == NULL)
+	    || realpath(info.dli_fname, dir) == NULL)
 		return;
-	for (i = 0; i < 2; i++) {
-		sep = strrchr(prefix, '/');
+	/* drop the file name, and a directory for each leading "../" */
+	up = 1;
+	for (rel = OSCAP_LIBDIR_TO_DATADIR; strncmp(rel, "../", 3) == 0; rel += 3)
+		up++;
+	for (i = 0; i < up; i++) {
+		sep = strrchr(dir, '/');
 		if (sep == NULL)
 			return;
 		*sep = '\0';
 	}
-	_set_relative_path(OSCAP_SCHEMA_PATH, prefix, "share/openscap/schemas");
-	_set_relative_path(OSCAP_XSLT_PATH, prefix, "share/openscap/xsl");
-	_set_relative_path(OSCAP_CPE_PATH, prefix, "share/openscap/cpe");
+	_set_relative_path(OSCAP_SCHEMA_PATH, dir, rel, "openscap/schemas");
+	_set_relative_path(OSCAP_XSLT_PATH, dir, rel, "openscap/xsl");
+	_set_relative_path(OSCAP_CPE_PATH, dir, rel, "openscap/cpe");
 }
 
 static const char *_get_default_path(const char *defpath)
